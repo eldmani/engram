@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+*.db
+*.db-shm
+*.db-wal
+
+# Node
+node_modules/
+dist/
+*.js.map
+coverage/
+.npm
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store

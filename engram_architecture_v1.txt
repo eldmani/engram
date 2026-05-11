@@ -1,0 +1,514 @@
+ENGRAM ARCHITECTURE V1
+
+Overview
+
+Engram is a model-agnostic memory store with a simple storage-first API and a temporal graph as the source of truth.
+
+Core principle:
+- truth is temporal
+- importance is dynamic
+- relevance is query-time
+
+This separates temporal correctness from memory prominence and retrieval scoring.
+
+
+1. Core Model
+
+Primary objects:
+- Episode: raw ingestion unit for one store() call
+- Entity: canonical node like user, company, project, topic
+- Fact: temporal assertion between entities or values
+- Alias: alternate surface forms for entity resolution
+- RetrievalTrace: explanation record for why a result was returned
+- QuarantinedFact: a candidate fact that was not committed because confidence thresholds were not met
+
+Episode
+
+Episode(
+    id: str,
+    scope_id: str,
+    source: str,
+    raw_text: str,
+    metadata: dict,
+    created_at: datetime,
+    checksum: str
+)
+
+Rules:
+- every store() creates exactly one episode
+- every fact must point to one source episode
+- raw episode is immutable
+
+Entity
+
+Entity(
+    id: str,
+    scope_id: str,
+    type: str,
+    canonical_name: str,
+    summary: str | None,
+    created_at: datetime,
+    updated_at: datetime,
+    first_seen_at: datetime,
+    last_seen_at: datetime,
+    salience: float,
+    strength: float,
+    confidence: float
+)
+
+Rules:
+- canonical entity ID never changes
+- aliases may change
+- summaries are background-generated, not inline-critical
+
+Alias
+
+Alias(
+    id: str,
+    entity_id: str,
+    value: str,
+    normalized_value: str,
+    embedding_id: str | None,
+    source_episode_id: str,
+    confidence: float,
+    created_at: datetime
+)
+
+QuarantinedFact
+
+QuarantinedFact(
+    id: str,
+    scope_id: str,
+    source_episode_id: str,
+    extracted_subject: str,
+    extracted_predicate: str,
+    extracted_object: str,
+    candidate_supersedes_fact_id: str | None,
+    extractor_confidence: float,
+    resolution_confidence: float,
+    reason: str,
+    status: str,
+    created_at: datetime,
+    reviewed_at: datetime | None
+)
+
+Rules:
+- reason describes why quarantine was triggered (low extractor confidence, low resolution confidence, disputed predicate match)
+- status values: pending, approved, rejected
+- approved quarantined facts run the normal temporal update path
+- rejected quarantined facts are kept for audit but never committed
+- quarantine records are surfaced by explain()
+
+Fact
+
+Fact(
+    id: str,
+    scope_id: str,
+    subject_entity_id: str,
+    predicate: str,
+    object_entity_id: str | None,
+    object_value_json: dict | None,
+    fact_type: str,
+    valid_from: datetime,
+    valid_to: datetime | None,
+    truth_state: str,
+    source_episode_id: str,
+    confidence: float,
+    salience: float,
+    strength: float,
+    access_count: int,
+    last_accessed_at: datetime | None,
+    created_at: datetime,
+    updated_at: datetime
+)
+
+Rules:
+- valid_to is null means fact is currently valid
+- truth_state=current and valid_to is null should align
+- superseded facts are not deleted
+- disputed facts remain queryable with lower trust
+
+Fact identity is determined by:
+- scope
+- subject
+- predicate
+- object
+- valid interval
+
+
+2. Public API
+
+The API stays storage-simple.
+
+class Engram:
+    def store(self, data: str | dict, metadata: dict | None = None, scope: str | None = None) -> StoreResult: ...
+    def retrieve(self, query: str, top_k: int = 10, scope: str | None = None, as_of: datetime | None = None) -> RetrievalResult: ...
+    def get_context(self, query: str, top_k: int = 10, scope: str | None = None, as_of: datetime | None = None, template: str = "default") -> ContextResult: ...
+    def update_fact(self, fact_id: str, value: dict | str, valid_from: datetime | None = None) -> Fact: ...
+    def forget(self, selector: dict, hard: bool = False) -> ForgetResult: ...
+    def explain(self, query: str, result_id: str | None = None, scope: str | None = None) -> ExplainResult: ...
+
+Method behavior:
+
+store()
+- accepts raw text or structured payload
+- creates episode
+- extracts entities and candidate facts
+- resolves entities
+- writes temporal facts
+- updates ephemeral indexes
+- returns created episode ID, fact IDs, entity IDs
+
+retrieve()
+- returns structured results, not assembled prompt text
+- includes facts, entities, episodes, scores, trace IDs
+
+get_context()
+- uses same retrieval engine
+- returns model-ready context blocks
+
+update_fact()
+- never mutates the old fact in place
+- closes prior fact with valid_to
+- creates a new fact with new value
+
+forget()
+- soft forget marks facts or entities as hidden from retrieval
+- hard forget deletes rows, graph edges, and index entries
+
+explain()
+- returns why the system chose those results: semantic hit, keyword hit, graph path, temporal filter, provenance
+
+
+3. Storage and Indexes
+
+Recommended v1 backend options:
+
+Lowest-friction v1:
+- SQLite for metadata
+- NetworkX for graph operations
+- FAISS for vector similarity
+
+Stronger production path:
+- SQLite for metadata
+- Neo4j for persistent graph
+- NetworkX or lightweight cache for ephemeral graph
+- FAISS for vector similarity
+
+Required indexes:
+- entity_name_idx: canonical name lookup
+- alias_norm_idx: normalized alias lookup
+- episode_scope_time_idx: recent episodes by scope
+- fact_subject_predicate_idx: direct fact lookup
+- fact_validity_idx: temporal filtering
+- fact_truth_state_idx: current vs historical
+- fts_episode_text_idx: keyword search
+- embedding_entity_idx: alias and entity similarity
+- embedding_fact_idx: fact semantic retrieval
+
+Graph representation:
+Nodes:
+- Entity
+- Episode
+
+Edges:
+- FACT_EDGE from subject entity to object entity or value proxy
+- MENTIONED_IN from entity to episode
+- DERIVED_FROM from fact to episode
+- ALIAS_OF from alias to entity
+- optional CO_OCCURS_IN between entities via same episode
+
+Graph edges must either be temporal themselves or point to temporal fact rows.
+Truth lives in fact records, not only in graph weights.
+
+
+4. Ingestion Pipeline
+
+Pipeline steps:
+1. Create episode
+2. Normalize input
+3. Extract entities
+4. Extract candidate facts
+5. Resolve entities against existing scope
+6. Detect temporal updates or contradictions
+7. Score salience
+8. Confidence gate (quarantine or commit)
+9. Write committed facts
+10. Update indexes and ephemeral graph
+11. Schedule reconsolidation tasks if needed
+
+Extractor contract:
+
+class Extractor:
+    def extract(self, data: str | dict) -> ExtractionResult: ...
+
+ExtractionResult(
+    entities=[ExtractedEntity(...)],
+    facts=[ExtractedFact(...)],
+    confidence=float
+)
+
+This is model-pluggable. The public API remains model-agnostic.
+
+Entity resolution output:
+- matched_entity_id
+- match_type: exact, alias, semantic, new
+- confidence
+
+Matching order:
+1. exact normalized alias
+2. exact canonical name
+3. scoped semantic nearest-neighbor
+4. create new entity
+
+Confidence gate:
+
+Before any fact is committed, both extractor confidence and resolution confidence
+are checked against thresholds.
+
+Thresholds (v1 defaults, configurable):
+- EXTRACTOR_CONFIDENCE_MIN: 0.7
+- RESOLUTION_CONFIDENCE_MIN: 0.75
+- SUPERSESSION_CONFIDENCE_MIN: 0.85
+
+Rules:
+- if extractor_confidence < EXTRACTOR_CONFIDENCE_MIN: quarantine the fact
+- if resolution_confidence < RESOLUTION_CONFIDENCE_MIN: quarantine the fact
+- if the fact would supersede an existing fact and either confidence is below
+  SUPERSESSION_CONFIDENCE_MIN: quarantine the fact
+- if all thresholds pass: commit the fact normally
+
+Quarantined facts are written to QuarantinedFact records and never affect the
+live graph. They are surfaced via explain() and available for manual review.
+New facts that do not supersede anything use the lower RESOLUTION_CONFIDENCE_MIN
+threshold. The higher SUPERSESSION_CONFIDENCE_MIN threshold only applies when
+an existing current fact would be closed.
+
+Temporal update logic example:
+- old fact: user prefers Adidas, current
+- new fact: user prefers Nike, current
+
+Update rule (confidence gate passed):
+- close old fact with valid_to=now and truth_state=superseded
+- create new fact with valid_from=now and truth_state=current
+
+Update rule (confidence gate failed):
+- do NOT touch the existing fact
+- write QuarantinedFact with candidate_supersedes_fact_id pointing to the old fact
+- reason = 'low confidence supersession'
+- status = 'pending'
+
+Salience scoring:
+
+salience = base * (1 + novelty) * (1 + importance)
+
+Where:
+- novelty is distance from existing similar facts in scope
+- importance is heuristic or model score based on fact type
+
+Suggested v1 importance priors:
+- identity facts: 1.0
+- stable preferences: 0.9
+- active projects or tasks: 0.9
+- temporal events: 0.7
+- small talk: 0.2
+
+
+5. Retrieval Pipeline
+
+Retrieval is adaptive hybrid, not graph-only.
+
+Query planner modes:
+- direct fact lookup
+- temporal lookup
+- relational lookup
+- episodic recall
+- mixed
+
+QueryPlan(
+    mode: str,
+    use_semantic: bool,
+    use_keyword: bool,
+    use_graph: bool,
+    use_temporal_filter: bool,
+    as_of: datetime | None
+)
+
+Retrieval stages:
+1. Parse query
+2. Resolve query entities
+3. Pull candidate facts from semantic search, BM25 or FTS, graph traversal, and temporal filters
+4. Fuse scores
+5. Rerank
+6. Build retrieval trace
+7. Reinforce accessed facts
+
+CandidateScore(
+    semantic_score: float,
+    keyword_score: float,
+    graph_score: float,
+    temporal_score: float,
+    salience_bonus: float,
+    strength_bonus: float,
+    final_score: float
+)
+
+Suggested v1 final score:
+
+final = aS + bK + cG + dT + e*salience + f*strength
+
+Where weights are query-mode-specific, not global.
+
+Examples:
+- direct lookup: high semantic + keyword
+- temporal query: high temporal bonus
+- multi-hop: high graph bonus
+
+Graph traversal:
+- use bounded traversal or Personalized PageRank for relational queries
+- do not run full traversal for every query
+
+Temporal filters must support:
+- current truth only
+- as-of timestamp
+- time range
+
+
+6. Context Assembly
+
+get_context() is a first-class feature.
+
+ContextResult(
+    facts_block: list[FactView],
+    entities_block: list[EntityView],
+    timeline_block: list[TimelineEvent],
+    episodes_block: list[EpisodeView],
+    evidence_block: list[EvidenceView],
+    confidence: float
+)
+
+Default formatted output should include:
+- current relevant facts
+- entity summaries where useful
+- timeline when query is temporal
+- evidence references back to episodes
+
+Example:
+
+[FACTS]
+- User is building a memory library.
+- Library goal is model-agnostic retrieval.
+- User prefers storage-first API design.
+
+[TIMELINE]
+- Previously considered graph-only retrieval.
+- Later switched to temporal context graph + hybrid retrieval.
+
+[EVIDENCE]
+- Derived from episodes ep_101, ep_118, ep_124.
+
+
+7. Background Jobs
+
+Reinforcement worker
+- triggered after retrieval
+- access_count += 1
+- last_accessed_at = now
+- strength += reinforcement_boost
+
+Strength decay worker
+- runs periodically
+- affects strength, not truth
+- if access_count < stable_threshold use fast power-law decay
+- else use slow linear decay
+
+Heat promotion worker
+- promotes ephemeral graph items into persistent fast paths
+
+Suggested heat:
+
+heat = (access_count * strength) / log(2 + age_hours)
+
+Use heat for:
+- persistent cache promotion
+- summary refresh priority
+- hot-entity denormalization
+
+Reconsolidation worker
+- merges duplicate aliases
+- refreshes entity summaries
+- infers durable traits from repeated facts
+- collapses duplicate facts
+- creates episode summaries
+- re-evaluates pending quarantined facts: if confidence has risen above thresholds
+  (e.g. same predicate confirmed by a later episode), promote and commit them
+
+Cleanup worker
+- prunes orphan aliases
+- prunes low-strength ephemeral cache edges
+- compacts stale traces or logs
+
+
+8. Explainability Contract
+
+Every retrieval should be explainable.
+
+RetrievalTrace(
+    id: str,
+    query: str,
+    scope_id: str,
+    candidate_fact_id: str,
+    semantic_score: float,
+    keyword_score: float,
+    graph_score: float,
+    temporal_score: float,
+    final_score: float,
+    matched_entities: list[str],
+    source_episode_ids: list[str],
+    created_at: datetime
+)
+
+
+9. V1 Non-Goals
+
+Do not include in v1:
+- automatic ontology learning beyond simple types
+- multi-tenant distributed graph clustering
+- cross-user shared memory graph
+- heavy offline summarization pipeline
+- autonomous agent orchestration
+- full managed service platform
+
+V1 focus:
+- strong store
+- strong retrieval
+- strong temporal truth
+- strong explainability
+
+
+10. Recommended V1 Build Order
+
+1. Core schema: episode, entity, fact, alias, quarantined_fact
+2. SQLite metadata + FAISS + in-memory graph
+3. store() with episode creation and basic extraction
+4. entity resolution
+5. confidence gate and quarantine writes
+6. temporal fact updates
+7. retrieve() with semantic + keyword + temporal filters
+8. graph traversal for relational mode
+9. get_context()
+10. reinforcement + decay workers
+11. explain() including quarantine surfacing
+12. reconsolidation worker with quarantine promotion
+
+
+11. Final Architecture Statement
+
+This v1 architecture combines:
+- Graphiti-style temporal context graph for truth and provenance
+- salience, reinforcement, decay, and heat mechanics for memory dynamics
+- Mem0-style simple store/retrieve API for usability
+- adaptive hybrid retrieval instead of graph-only retrieval
+- context assembly and explanation as first-class outputs
+
+This is the implementation target.

@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "engram-memory"
+version = "0.1.0"
+description = "Model-agnostic temporal memory store for AI agents"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+keywords = ["memory", "ai", "rag", "temporal", "knowledge-graph", "agents"]
+dependencies = []
+
+[project.optional-dependencies]
+graph = ["networkx>=3.0"]
+vector = ["numpy>=1.24"]
+all = ["networkx>=3.0", "numpy>=1.24"]
+dev = ["pytest>=7.0", "pytest-cov>=4.0"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["engram*"]
+
+[tool.setuptools.package-data]
+engram = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
