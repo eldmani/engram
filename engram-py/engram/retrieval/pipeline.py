@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from ..config import EngramConfig
+from ..embedding.base import BaseEmbedder, NullEmbedder, cosine_similarity
 from ..models import Entity, Episode, Fact, RetrievalTrace
 from ..results import (
     ContextResult,
@@ -31,6 +32,7 @@ def _temporal_score(fact: Fact, now: datetime) -> float:
 def _fuse(
     keyword: float,
     semantic: float,
+    graph: float,
     temporal: float,
     salience: float,
     strength: float,
@@ -39,6 +41,7 @@ def _fuse(
     return (
         cfg.weight_keyword * keyword
         + cfg.weight_semantic * semantic
+        + cfg.weight_graph * graph
         + cfg.weight_temporal * temporal
         + cfg.weight_salience * salience
         + cfg.weight_strength * strength
@@ -46,9 +49,15 @@ def _fuse(
 
 
 class RetrievalPipeline:
-    def __init__(self, store: SQLiteStore, config: EngramConfig) -> None:
+    def __init__(
+        self,
+        store: SQLiteStore,
+        config: EngramConfig,
+        embedder: BaseEmbedder | None = None,
+    ) -> None:
         self._store = store
         self._cfg = config
+        self._embedder: BaseEmbedder = embedder or NullEmbedder()
 
     def retrieve(
         self,
@@ -70,17 +79,109 @@ class RetrievalPipeline:
 
         # Build scored candidates
         scored_facts: dict[str, tuple[Fact, float]] = {}
+        # Track per-fact score components for trace persistence
+        kw_scores: dict[str, float] = {}
+        sem_scores: dict[str, float] = {}
+        graph_scores: dict[str, float] = {}
 
         for fact, kw in fact_hits:
             t = _temporal_score(fact, now)
-            score = _fuse(kw, 0.0, t, fact.salience, fact.strength, self._cfg)
+            score = _fuse(kw, 0.0, 0.0, t, fact.salience, fact.strength, self._cfg)
             scored_facts[fact.id] = (fact, score)
+            kw_scores[fact.id] = kw
 
         for fact in current_facts:
             if fact.id not in scored_facts:
                 t = _temporal_score(fact, now)
-                score = _fuse(0.0, 0.0, t, fact.salience, fact.strength, self._cfg)
+                score = _fuse(0.0, 0.0, 0.0, t, fact.salience, fact.strength, self._cfg)
                 scored_facts[fact.id] = (fact, score)
+
+        # --- semantic search (active only when a real embedder is set) ---
+        if not isinstance(self._embedder, NullEmbedder) and query:
+            try:
+                q_vecs = self._embedder.embed([query])
+                q_vec = q_vecs[0] if q_vecs else []
+            except Exception:
+                _log.warning("Embedder raised during query embedding; skipping.", exc_info=True)
+                q_vec = []
+
+            if q_vec:
+                emb_fact_ids = self._store.get_embedded_fact_ids_for_scope(scope_id)
+                emb_pairs = self._store.get_embeddings_for_refs("fact", emb_fact_ids)
+                for ref_id, vec in emb_pairs:
+                    sem = cosine_similarity(q_vec, vec)
+                    sem_scores[ref_id] = sem
+                    if ref_id in scored_facts:
+                        fact, old_score = scored_facts[ref_id]
+                        kw = kw_scores.get(ref_id, 0.0)
+                        t = _temporal_score(fact, now)
+                        new_score = _fuse(kw, sem, 0.0, t, fact.salience, fact.strength, self._cfg)
+                        scored_facts[ref_id] = (fact, new_score)
+                    else:
+                        fact = self._store.get_fact(ref_id)
+                        if fact:
+                            t = _temporal_score(fact, now)
+                            score = _fuse(0.0, sem, 0.0, t, fact.salience, fact.strength, self._cfg)
+                            scored_facts[ref_id] = (fact, score)
+
+        # --- graph traversal: N-hop BFS from primary candidate entities ---
+        # Graph score decays with hop distance: g = 1.0 / (1.0 + hop * 0.5)
+        # hop 0 (seed entity) → 1.0 | hop 1 → 0.667 | hop 2 → 0.5 | …
+        seed_entity_ids = list({
+            entity_id
+            for fact, _ in scored_facts.values()
+            for entity_id in [fact.subject_entity_id,
+                               *(([fact.object_entity_id]) if fact.object_entity_id else [])]
+        })
+        if seed_entity_ids:
+            entity_graph = self._store.get_entity_graph(
+                seed_entity_ids, scope_id, self._cfg.graph_max_hops
+            )
+            # Collect all non-seed entities reachable within max_hops
+            neighbor_entity_ids = [eid for eid, hop in entity_graph.items() if hop > 0]
+            if neighbor_entity_ids:
+                neighbor_facts = self._store.get_facts_for_entities(
+                    neighbor_entity_ids, scope_id
+                )
+                for fact in neighbor_facts:
+                    subj_hop = entity_graph.get(fact.subject_entity_id, self._cfg.graph_max_hops + 1)
+                    obj_hop = (
+                        entity_graph.get(fact.object_entity_id, self._cfg.graph_max_hops + 1)
+                        if fact.object_entity_id
+                        else self._cfg.graph_max_hops + 1
+                    )
+                    min_hop = min(subj_hop, obj_hop)
+                    g = 1.0 / (1.0 + min_hop * 0.5)
+                    if fact.id in scored_facts:
+                        # Already scored — add graph bonus if it improves the score
+                        existing_g = graph_scores.get(fact.id, 0.0)
+                        if g > existing_g:
+                            graph_scores[fact.id] = g
+                            old_fact, old_score = scored_facts[fact.id]
+                            scored_facts[fact.id] = (
+                                old_fact,
+                                old_score + self._cfg.weight_graph * (g - existing_g),
+                            )
+                    else:
+                        # New fact reachable only via graph traversal
+                        graph_scores[fact.id] = g
+                        t = _temporal_score(fact, now)
+                        score = _fuse(0.0, 0.0, g, t, fact.salience, fact.strength, self._cfg)
+                        scored_facts[fact.id] = (fact, score)
+            # Also apply graph bonus for already-scored facts whose entities appear in the graph
+            for fact_id, (fact, _) in list(scored_facts.items()):
+                if fact_id in graph_scores:
+                    continue
+                subj_hop = entity_graph.get(fact.subject_entity_id, self._cfg.graph_max_hops + 1)
+                obj_hop = (
+                    entity_graph.get(fact.object_entity_id, self._cfg.graph_max_hops + 1)
+                    if fact.object_entity_id
+                    else self._cfg.graph_max_hops + 1
+                )
+                min_hop = min(subj_hop, obj_hop)
+                if min_hop <= self._cfg.graph_max_hops:
+                    g = 1.0 / (1.0 + min_hop * 0.5)
+                    graph_scores[fact_id] = g
 
         ranked_facts = sorted(
             scored_facts.values(), key=lambda x: x[1], reverse=True
@@ -112,9 +213,9 @@ class RetrievalPipeline:
                 query=query,
                 scope_id=scope_id,
                 candidate_fact_id=fact.id,
-                semantic_score=0.0,  # reserved — plug in an embedder to populate
-                keyword_score=scored_facts.get(fact.id, (None, 0.0))[1],
-                graph_score=0.0,
+                semantic_score=sem_scores.get(fact.id, 0.0),
+                keyword_score=kw_scores.get(fact.id, 0.0),
+                graph_score=graph_scores.get(fact.id, 0.0),
                 temporal_score=t,
                 final_score=score,
                 matched_entities=[fact.subject_entity_id],
@@ -147,6 +248,9 @@ class RetrievalPipeline:
     ) -> ContextResult:
         result = self.retrieve(query, top_k, scope_id, as_of)
         now = as_of or datetime.now(timezone.utc)
+
+        # Memory blocks — always fetched and surfaced first in formatted output
+        memory_blocks: dict[str, str] = self._store.get_all_blocks(scope_id)
 
         # Build entity lookup for display names
         entity_names: dict[str, str] = {
@@ -246,7 +350,7 @@ class RetrievalPipeline:
         else:
             confidence = 0.0
 
-        formatted = _format(facts_block, entities_block, timeline_block, episodes_block, evidence_block)
+        formatted = _format(facts_block, entities_block, timeline_block, episodes_block, evidence_block, memory_blocks)
 
         return ContextResult(
             facts_block=facts_block,
@@ -254,6 +358,7 @@ class RetrievalPipeline:
             timeline_block=timeline_block,
             episodes_block=episodes_block,
             evidence_block=evidence_block,
+            memory_blocks=memory_blocks,
             confidence=confidence,
             formatted=formatted,
         )
@@ -265,8 +370,15 @@ def _format(
     timeline: list[TimelineEvent],
     episodes: list[EpisodeView],
     evidence: list[EvidenceView],
+    memory_blocks: dict[str, str] | None = None,
 ) -> str:
     lines: list[str] = []
+
+    if memory_blocks:
+        lines.append("[MEMORY]")
+        for key, value in sorted(memory_blocks.items()):
+            lines.append(f"- {key}: {value}")
+        lines.append("")
 
     if facts:
         lines.append("[FACTS]")

@@ -79,6 +79,7 @@ class ContextResult:
     timeline_block: List[TimelineEvent] = field(default_factory=list)
     episodes_block: List[EpisodeView] = field(default_factory=list)
     evidence_block: List[EvidenceView] = field(default_factory=list)
+    memory_blocks: Dict[str, str] = field(default_factory=dict)
     confidence: float = 0.0
     formatted: str = ""
 

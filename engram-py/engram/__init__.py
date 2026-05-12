@@ -13,6 +13,7 @@ Quick start::
 
 __version__ = "0.1.0"
 from .config import EngramConfig
+from .embedding.base import BaseEmbedder, NullEmbedder
 from .engram import Engram
 from .extraction.base import BaseExtractor, ExtractionResult, ExtractedEntity, ExtractedFact, NullExtractor
 from .models import Alias, Entity, Episode, Fact, QuarantinedFact, RetrievalTrace

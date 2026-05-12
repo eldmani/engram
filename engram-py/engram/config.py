@@ -18,15 +18,18 @@ class EngramConfig:
     default_top_k: int = 10
 
     # Hybrid scoring weights (must sum to 1.0 for full calibration)
-    # NOTE: weight_semantic is reserved for a future vector embedder.
-    # Until set_embedder() is called, semantic_score is always 0.0 and
-    # keyword scoring carries the retrieval signal for that weight's share.
+    # weight_semantic is used only when set_embedder() is called with a
+    # real embedder. With the default NullEmbedder, semantic_score is 0.0.
+    # weight_graph reflects N-hop entity graph traversal scores (see graph_max_hops).
     weight_semantic: float = 0.40
     weight_keyword: float = 0.30
     weight_graph: float = 0.10
     weight_temporal: float = 0.10
     weight_salience: float = 0.05
     weight_strength: float = 0.05
+
+    # Graph traversal depth for hybrid retrieval (2 = seed + 2-hop neighbours)
+    graph_max_hops: int = 2
 
     # Memory dynamics
     reinforcement_boost: float = 0.05

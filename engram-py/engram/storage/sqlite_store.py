@@ -138,10 +138,20 @@ CREATE TABLE IF NOT EXISTS embeddings (
     created_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS embedding_ref_idx ON embeddings (ref_type, ref_id);
+
+CREATE TABLE IF NOT EXISTS memory_blocks (
+    scope_id    TEXT NOT NULL,
+    key         TEXT NOT NULL,
+    value       TEXT NOT NULL,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    PRIMARY KEY (scope_id, key)
+);
+CREATE INDEX IF NOT EXISTS block_scope_idx ON memory_blocks (scope_id);
 """
 
 _DT_FMT = "%Y-%m-%dT%H:%M:%S.%f"
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 
 
 def _sanitize_fts(query: str) -> str:
@@ -679,3 +689,190 @@ class SQLiteStore:
             source_episode_ids=json.loads(row["source_episode_ids"]),
             created_at=_dt(row["created_at"]),
         )
+
+    # ------------------------------------------------------------------
+    # Embeddings
+    # ------------------------------------------------------------------
+
+    def insert_embedding(
+        self,
+        ref_type: str,
+        ref_id: str,
+        vector: list[float],
+        model: str,
+    ) -> None:
+        """Store (or replace) a float vector for an episode or fact.
+
+        The primary key is ``"{ref_type}:{ref_id}"`` so each reference holds
+        exactly one embedding.  Calling this again with a different model
+        simply overwrites the previous vector.
+        """
+        from ..embedding.base import vec_to_blob
+
+        emb_id = f"{ref_type}:{ref_id}"
+        blob = vec_to_blob(vector)
+        self._conn.execute(
+            "INSERT OR REPLACE INTO embeddings VALUES (?,?,?,?,?,?)",
+            (emb_id, ref_type, ref_id, blob, model,
+             _ts(datetime.now(timezone.utc))),
+        )
+        self._conn.commit()
+
+    def get_embeddings_for_refs(
+        self, ref_type: str, ref_ids: list[str]
+    ) -> list[tuple[str, list[float]]]:
+        """Return ``(ref_id, vector)`` pairs for the requested references."""
+        if not ref_ids:
+            return []
+        from ..embedding.base import blob_to_vec
+
+        placeholders = ",".join("?" * len(ref_ids))
+        rows = self._conn.execute(
+            f"SELECT ref_id, vector FROM embeddings"
+            f" WHERE ref_type=? AND ref_id IN ({placeholders})",
+            (ref_type, *ref_ids),
+        ).fetchall()
+        return [(r["ref_id"], blob_to_vec(r["vector"])) for r in rows]
+
+    def get_embedded_fact_ids_for_scope(self, scope_id: str) -> list[str]:
+        """Return IDs of *current* facts in *scope_id* that have stored embeddings."""
+        rows = self._conn.execute(
+            """
+            SELECT e.ref_id
+            FROM embeddings e
+            JOIN facts f ON f.id = e.ref_id
+            WHERE e.ref_type = 'fact'
+              AND f.scope_id = ?
+              AND f.truth_state != 'hidden'
+            """,
+            (scope_id,),
+        ).fetchall()
+        return [r["ref_id"] for r in rows]
+
+    # ------------------------------------------------------------------
+    # Graph traversal helpers
+    # ------------------------------------------------------------------
+
+    def get_connected_entity_ids(
+        self, entity_ids: list[str], scope_id: str
+    ) -> set[str]:
+        """Return entity IDs reachable in exactly one hop from *entity_ids*.
+
+        Traverses both outgoing (subject→object_entity) and incoming
+        (object_entity→subject) edges of *current* facts in *scope_id*.
+        The seed entities themselves are excluded from the result.
+        """
+        if not entity_ids:
+            return set()
+        ph = ",".join("?" * len(entity_ids))
+        # Outgoing: seeds are subjects → collect objects
+        rows_out = self._conn.execute(
+            f"""SELECT DISTINCT object_entity_id FROM facts
+                WHERE subject_entity_id IN ({ph})
+                  AND object_entity_id IS NOT NULL
+                  AND scope_id = ?
+                  AND truth_state != 'hidden'""",
+            (*entity_ids, scope_id),
+        ).fetchall()
+        # Incoming: seeds are objects → collect subjects
+        rows_in = self._conn.execute(
+            f"""SELECT DISTINCT subject_entity_id FROM facts
+                WHERE object_entity_id IN ({ph})
+                  AND scope_id = ?
+                  AND truth_state != 'hidden'""",
+            (*entity_ids, scope_id),
+        ).fetchall()
+        seed_set = set(entity_ids)
+        neighbors = (
+            {r["object_entity_id"] for r in rows_out}
+            | {r["subject_entity_id"] for r in rows_in}
+        )
+        return neighbors - seed_set
+
+    def get_facts_for_entities(
+        self, entity_ids: list[str], scope_id: str, limit: int = 100
+    ) -> list[Fact]:
+        """Return current facts whose subject *or* object is in *entity_ids*."""
+        if not entity_ids:
+            return []
+        ph = ",".join("?" * len(entity_ids))
+        rows = self._conn.execute(
+            f"""SELECT * FROM facts
+                WHERE scope_id = ?
+                  AND truth_state != 'hidden'
+                  AND (
+                      subject_entity_id IN ({ph})
+                      OR (object_entity_id IS NOT NULL AND object_entity_id IN ({ph}))
+                  )
+                ORDER BY salience DESC, strength DESC
+                LIMIT ?""",
+            (scope_id, *entity_ids, *entity_ids, limit),
+        ).fetchall()
+        return [self._row_to_fact(r) for r in rows]
+
+    def get_entity_graph(
+        self,
+        seed_entity_ids: list[str],
+        scope_id: str,
+        max_hops: int = 2,
+    ) -> dict[str, int]:
+        """BFS from *seed_entity_ids* up to *max_hops* hops.
+
+        Returns a mapping ``{entity_id: hop_distance}`` where seeds have
+        distance 0 and each hop adds 1.  Only entities reachable via
+        *current* (non-hidden) facts in *scope_id* are included.
+        """
+        if not seed_entity_ids:
+            return {}
+        distances: dict[str, int] = {eid: 0 for eid in seed_entity_ids}
+        frontier = list(seed_entity_ids)
+        for hop in range(1, max_hops + 1):
+            if not frontier:
+                break
+            neighbors = self.get_connected_entity_ids(frontier, scope_id)
+            new_nodes = neighbors - set(distances)
+            for nid in new_nodes:
+                distances[nid] = hop
+            frontier = list(new_nodes)
+        return distances
+
+    # ------------------------------------------------------------------
+    # Memory blocks (always-retrieved in-context key-value slots)
+    # ------------------------------------------------------------------
+
+    def set_block(self, scope_id: str, key: str, value: str) -> None:
+        """Upsert a named memory block for *scope_id*."""
+        now = datetime.now(timezone.utc).isoformat()
+        self._conn.execute(
+            """INSERT INTO memory_blocks (scope_id, key, value, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(scope_id, key) DO UPDATE SET
+                   value = excluded.value,
+                   updated_at = excluded.updated_at""",
+            (scope_id, key, value, now, now),
+        )
+        self._conn.commit()
+
+    def get_block(self, scope_id: str, key: str) -> Optional[str]:
+        """Return the value of a memory block, or ``None`` if it does not exist."""
+        row = self._conn.execute(
+            "SELECT value FROM memory_blocks WHERE scope_id = ? AND key = ?",
+            (scope_id, key),
+        ).fetchone()
+        return row["value"] if row else None
+
+    def get_all_blocks(self, scope_id: str) -> dict[str, str]:
+        """Return all memory blocks for *scope_id* as ``{key: value}``."""
+        rows = self._conn.execute(
+            "SELECT key, value FROM memory_blocks WHERE scope_id = ? ORDER BY key",
+            (scope_id,),
+        ).fetchall()
+        return {r["key"]: r["value"] for r in rows}
+
+    def delete_block(self, scope_id: str, key: str) -> None:
+        """Delete a named memory block.  No-op if it does not exist."""
+        self._conn.execute(
+            "DELETE FROM memory_blocks WHERE scope_id = ? AND key = ?",
+            (scope_id, key),
+        )
+        self._conn.commit()

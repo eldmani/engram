@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from .config import EngramConfig
+from .embedding.base import BaseEmbedder, NullEmbedder
 from .extraction.base import BaseExtractor, NullExtractor
 from .ingestion.pipeline import IngestionPipeline
 from .models import Fact
@@ -43,6 +44,7 @@ class Engram:
         self.config = config or EngramConfig()
         self._store = SQLiteStore(self.config.db_path)
         self._extractor: BaseExtractor = NullExtractor()
+        self._embedder: BaseEmbedder = NullEmbedder()
         self._ingest = IngestionPipeline(self._store, self._extractor, self.config)
         self._retrieve = RetrievalPipeline(self._store, self.config)
         self._workers = BackgroundWorkers(self._store, self.config)
@@ -50,11 +52,57 @@ class Engram:
     def set_extractor(self, extractor: BaseExtractor) -> None:
         """Replace the extractor. Takes effect on the next store() call."""
         self._extractor = extractor
-        self._ingest = IngestionPipeline(self._store, extractor, self.config)
+        self._ingest = IngestionPipeline(self._store, extractor, self.config, self._embedder)
+
+    def set_embedder(self, embedder: BaseEmbedder) -> None:
+        """Replace the embedder. Takes effect on the next store() / retrieve() call.
+
+        Existing stored episodes and facts are *not* retroactively embedded.
+        Call ``store()`` again (or re-ingest) to populate embeddings for old
+        data after swapping in a new embedder.
+
+        Example::
+
+            from engram import Engram, BaseEmbedder
+
+            class MyEmbedder(BaseEmbedder):
+                model_name = "my-model"
+                def embed(self, texts): ...
+
+            mem = Engram()
+            mem.set_embedder(MyEmbedder())
+        """
+        self._embedder = embedder
+        self._ingest = IngestionPipeline(self._store, self._extractor, self.config, embedder)
+        self._retrieve = RetrievalPipeline(self._store, self.config, embedder)
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    # --- Memory blocks (always-retrieved in-context key-value slots) ---
+
+    def set_block(self, key: str, value: str, *, scope: str | None = None) -> None:
+        """Upsert a named memory block that is always surfaced by get_context().
+
+        Memory blocks are permanently pinned to the context window and are
+        returned in every :meth:`get_context` call for the given scope,
+        regardless of the retrieval query.  They are intended for agent-editable
+        state such as ``"persona"``, ``"current_goal"``, or ``"user_profile"``.
+        """
+        self._store.set_block(scope or self.config.default_scope, key, value)
+
+    def get_block(self, key: str, *, scope: str | None = None) -> str | None:
+        """Return the value of a named memory block, or ``None`` if absent."""
+        return self._store.get_block(scope or self.config.default_scope, key)
+
+    def delete_block(self, key: str, *, scope: str | None = None) -> None:
+        """Delete a named memory block.  No-op if it does not exist."""
+        self._store.delete_block(scope or self.config.default_scope, key)
+
+    def get_blocks(self, *, scope: str | None = None) -> dict[str, str]:
+        """Return all memory blocks for the given scope as ``{key: value}``."""
+        return self._store.get_all_blocks(scope or self.config.default_scope)
 
     def store(
         self,

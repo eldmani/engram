@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from ..config import EngramConfig
+from ..embedding.base import BaseEmbedder, NullEmbedder
 from ..extraction.base import BaseExtractor, ExtractedFact
 from ..models import Alias, Entity, Episode, Fact, QuarantinedFact
 from ..results import StoreResult
@@ -41,10 +42,12 @@ class IngestionPipeline:
         store: SQLiteStore,
         extractor: BaseExtractor,
         config: EngramConfig,
+        embedder: BaseEmbedder | None = None,
     ) -> None:
         self._store = store
         self._extractor = extractor
         self._config = config
+        self._embedder: BaseEmbedder = embedder or NullEmbedder()
 
     def run(
         self,
@@ -75,7 +78,10 @@ class IngestionPipeline:
 
         if not extraction.entities and not extraction.facts:
             # NullExtractor or extractor returned nothing — episode is still useful
+            self._embed_after_store(episode, [])
             return result
+
+        committed_facts: list[Fact] = []
 
         # Step 4 – resolve entities
         entity_map: dict[str, str] = {}  # extracted name → entity id
@@ -171,12 +177,54 @@ class IngestionPipeline:
             )
             self._store.insert_fact(fact)
             result.fact_ids.append(fact.id)
+            committed_facts.append(fact)
 
+        self._embed_after_store(episode, committed_facts)
         return result
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _embed_after_store(
+        self, episode: Episode, committed_facts: list[Fact]
+    ) -> None:
+        """Embed episode text and committed fact texts, persisting the vectors."""
+        if isinstance(self._embedder, NullEmbedder):
+            return  # nothing to do — semantic_score stays 0.0
+
+        texts: list[str] = []
+        refs: list[tuple[str, str]] = []  # (ref_type, ref_id)
+
+        # Episode
+        texts.append(episode.raw_text)
+        refs.append(("episode", episode.id))
+
+        # Facts: embed "predicate + object"
+        for fact in committed_facts:
+            if fact.object_value_json:
+                obj_text = str(fact.object_value_json.get("value", ""))
+            elif fact.object_entity_id:
+                obj_text = fact.object_entity_id
+            else:
+                obj_text = ""
+            texts.append(f"{fact.predicate} {obj_text}".strip())
+            refs.append(("fact", fact.id))
+
+        try:
+            vectors = self._embedder.embed(texts)
+        except Exception:
+            _log.warning(
+                "Embedder raised an exception; skipping embedding storage.",
+                exc_info=True,
+            )
+            return
+
+        for (ref_type, ref_id), vector in zip(refs, vectors):
+            if vector:
+                self._store.insert_embedding(
+                    ref_type, ref_id, vector, self._embedder.model_name
+                )
 
     def _resolve_entity(
         self, name: str, entity_type: str, scope_id: str, episode: Episode
