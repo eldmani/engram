@@ -1,0 +1,1402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Engram — Persistent Structured Memory for AI Agents</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface2: #1c2330;
+      --border: #30363d;
+      --accent: #58a6ff;
+      --accent2: #3fb950;
+      --accent3: #d2a8ff;
+      --accent4: #ffa657;
+      --accent5: #ff7b72;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --tag-bg: #1f2d3d;
+      --code-bg: #161b22;
+      --card: #1c2330;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      background: linear-gradient(135deg, #0d1117 0%, #1a2340 50%, #0d1117 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 80px 24px 60px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(88,166,255,0.12) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .hero-badge {
+      display: inline-block;
+      background: rgba(88,166,255,0.12);
+      border: 1px solid rgba(88,166,255,0.3);
+      color: var(--accent);
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 4px 14px;
+      border-radius: 99px;
+      margin-bottom: 20px;
+    }
+    .hero h1 {
+      font-size: clamp(2.2rem, 5vw, 3.8rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 16px;
+    }
+    .hero h1 span { color: var(--accent); }
+    .hero p.lead {
+      font-size: clamp(1rem, 2vw, 1.25rem);
+      color: var(--muted);
+      max-width: 640px;
+      margin: 0 auto 32px;
+    }
+    .badges {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .badge {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-size: 0.82rem;
+      color: var(--muted);
+      font-family: 'SFMono-Regular', Consolas, monospace;
+    }
+    .badge strong { color: var(--text); }
+
+    /* ── Layout ── */
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+    section { padding: 60px 0; border-bottom: 1px solid var(--border); }
+    section:last-of-type { border-bottom: none; }
+
+    .section-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 10px;
+    }
+    h2 {
+      font-size: clamp(1.5rem, 3vw, 2.1rem);
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin-bottom: 14px;
+    }
+    h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    p { color: var(--muted); margin-bottom: 12px; }
+    p strong { color: var(--text); }
+
+    /* ── Concept Grid ── */
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 18px;
+      margin-top: 36px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .card:hover { border-color: var(--accent); transform: translateY(-2px); }
+    .card-icon {
+      font-size: 1.8rem;
+      margin-bottom: 12px;
+    }
+    .card h3 { color: var(--text); margin-bottom: 6px; }
+    .card p { color: var(--muted); font-size: 0.92rem; margin: 0; }
+
+    /* ── Architecture Diagram ── */
+    .arch-diagram {
+      margin: 36px 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+    }
+    .arch-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .arch-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 22px;
+      font-size: 0.88rem;
+      text-align: center;
+      min-width: 120px;
+    }
+    .arch-box .label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; display: block; }
+    .arch-box .name { font-weight: 600; color: var(--text); }
+    .arch-box.blue  { border-color: rgba(88,166,255,0.5);  background: rgba(88,166,255,0.06); }
+    .arch-box.green { border-color: rgba(63,185,80,0.5);   background: rgba(63,185,80,0.06); }
+    .arch-box.purple{ border-color: rgba(210,168,255,0.5); background: rgba(210,168,255,0.06); }
+    .arch-box.orange{ border-color: rgba(255,166,87,0.5);  background: rgba(255,166,87,0.06); }
+    .arch-arrow {
+      color: var(--muted);
+      font-size: 1.4rem;
+      margin: 6px 0;
+    }
+    .arch-divider { width: 1px; height: 32px; background: var(--border); margin: 0 4px; }
+
+    /* ── Scoring Bar ── */
+    .score-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+      margin-top: 28px;
+    }
+    .score-row { display: flex; flex-direction: column; gap: 6px; }
+    .score-label { display: flex; justify-content: space-between; font-size: 0.88rem; }
+    .score-label span:first-child { color: var(--text); }
+    .score-label span:last-child  { color: var(--muted); font-family: monospace; }
+    .bar-track { background: var(--surface2); border-radius: 4px; height: 7px; overflow: hidden; }
+    .bar-fill  { height: 100%; border-radius: 4px; }
+
+    /* ── Code Tabs ── */
+    .tabs { margin-top: 32px; }
+    .tab-list {
+      display: flex;
+      gap: 4px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-bottom: none;
+      padding: 6px 6px 0;
+      border-radius: 10px 10px 0 0;
+      overflow-x: auto;
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 0.85rem;
+      padding: 8px 18px;
+      cursor: pointer;
+      border-radius: 6px 6px 0 0;
+      white-space: nowrap;
+      font-family: inherit;
+      transition: color 0.15s, background 0.15s;
+    }
+    .tab-btn:hover  { color: var(--text); background: rgba(255,255,255,0.04); }
+    .tab-btn.active { color: var(--text); background: var(--bg); font-weight: 600; }
+    .tab-panel {
+      display: none;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 0 0 10px 10px;
+      overflow: auto;
+    }
+    .tab-panel.active { display: block; }
+
+    /* ── Code Block ── */
+    pre {
+      padding: 24px;
+      font-size: 0.875rem;
+      line-height: 1.65;
+      overflow-x: auto;
+      white-space: pre;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    }
+    .c-kw    { color: #ff7b72; }   /* keyword */
+    .c-fn    { color: #d2a8ff; }   /* function/method */
+    .c-str   { color: #a5d6ff; }   /* string */
+    .c-num   { color: #79c0ff; }   /* number */
+    .c-cmt   { color: #8b949e; font-style: italic; }  /* comment */
+    .c-cls   { color: #ffa657; }   /* class/type */
+    .c-prop  { color: #e6edf3; }   /* property access */
+    .c-op    { color: #ff7b72; }   /* operator */
+
+    /* ── Use-case Cards ── */
+    .usecase-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+      margin-top: 36px;
+    }
+    .usecase-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .usecase-header {
+      padding: 18px 22px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .usecase-icon {
+      width: 40px; height: 40px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.2rem;
+      flex-shrink: 0;
+    }
+    .usecase-header h3 { margin: 0; font-size: 1rem; }
+    .usecase-header p  { margin: 0; font-size: 0.82rem; color: var(--muted); }
+    .usecase-body { padding: 18px 22px; }
+    .usecase-body pre { padding: 0; font-size: 0.8rem; background: none; }
+
+    /* ── Lifecycle timeline ── */
+    .timeline {
+      position: relative;
+      margin-top: 36px;
+      padding-left: 32px;
+    }
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 10px; top: 8px; bottom: 8px;
+      width: 2px;
+      background: linear-gradient(to bottom, var(--accent), var(--accent2));
+      border-radius: 2px;
+    }
+    .tl-item {
+      position: relative;
+      margin-bottom: 28px;
+    }
+    .tl-item::before {
+      content: '';
+      position: absolute;
+      left: -26px; top: 6px;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--bg);
+    }
+    .tl-item:nth-child(2)::before { background: var(--accent3); }
+    .tl-item:nth-child(3)::before { background: var(--accent2); }
+    .tl-item:nth-child(4)::before { background: var(--accent4); }
+    .tl-item:nth-child(5)::before { background: var(--accent5); }
+    .tl-item h3 { font-size: 0.95rem; color: var(--text); margin-bottom: 4px; }
+    .tl-item p  { font-size: 0.88rem; color: var(--muted); margin: 0; }
+
+    /* ── Comparison table ── */
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 32px;
+      font-size: 0.9rem;
+    }
+    .compare-table th, .compare-table td {
+      border: 1px solid var(--border);
+      padding: 12px 18px;
+      text-align: left;
+    }
+    .compare-table th { background: var(--surface2); color: var(--text); font-weight: 600; }
+    .compare-table td { color: var(--muted); }
+    .compare-table td:first-child { color: var(--text); font-weight: 500; }
+    .yes { color: var(--accent2) !important; font-weight: 600; }
+    .no  { color: var(--accent5) !important; }
+    .partial { color: var(--accent4) !important; }
+
+    /* ── Footer ── */
+    footer {
+      padding: 40px 24px;
+      text-align: center;
+      border-top: 1px solid var(--border);
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+    footer p { color: var(--muted); font-size: 0.9rem; margin: 0; }
+
+    /* ── Nav ── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(13,17,23,0.88);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+    }
+    .nav-inner {
+      max-width: 1100px; margin: 0 auto;
+      display: flex; align-items: center; justify-content: space-between;
+      height: 52px;
+    }
+    .nav-logo { font-weight: 800; font-size: 1.1rem; letter-spacing: -0.02em; color: var(--text); }
+    .nav-logo span { color: var(--accent); }
+    .nav-links { display: flex; gap: 6px; }
+    .nav-links a {
+      color: var(--muted); text-decoration: none;
+      font-size: 0.85rem; padding: 6px 12px; border-radius: 6px;
+      transition: color 0.15s, background 0.15s;
+    }
+    .nav-links a:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+
+    /* ── Responsive ── */
+    @media (max-width: 600px) {
+      .nav-links { display: none; }
+      .arch-row { flex-direction: column; }
+      .compare-table th:nth-child(n+3), .compare-table td:nth-child(n+3) { display: none; }
+    }
+
+    /* ── Live Demo ── */
+    .demo-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-top: 28px;
+    }
+    @media (max-width: 720px) { .demo-grid { grid-template-columns: 1fr; } }
+    .demo-panel {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .demo-panel-header {
+      background: var(--surface2);
+      padding: 10px 18px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .demo-panel-header strong { color: var(--text); }
+    .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .dot-r { background: #ff5f57; }
+    .dot-y { background: #febc2e; }
+    .dot-g { background: #28c840; }
+    #demo-output {
+      padding: 18px;
+      min-height: 220px;
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.7;
+      white-space: pre-wrap;
+    }
+    .demo-controls { padding: 18px; }
+    .demo-controls label { display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 6px; }
+    .demo-controls input, .demo-controls select {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 8px 12px;
+      font-size: 0.88rem;
+      font-family: inherit;
+      margin-bottom: 10px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .demo-controls input:focus, .demo-controls select:focus { border-color: var(--accent); }
+    .btn {
+      background: var(--accent);
+      color: #0d1117;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 22px;
+      font-size: 0.9rem;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      transition: opacity 0.15s;
+      width: 100%;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn.secondary {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      margin-top: 6px;
+    }
+    .out-line { display: block; }
+    .out-key   { color: var(--accent); }
+    .out-val   { color: var(--accent2); }
+    .out-fact  { color: var(--text); }
+    .out-muted { color: var(--muted); }
+    .out-warn  { color: var(--accent4); }
+  </style>
+</head>
+<body>
+
+<!-- ── Nav ── -->
+<nav>
+  <div class="nav-inner">
+    <span class="nav-logo">engr<span>a</span>m</span>
+    <div class="nav-links">
+      <a href="#what">What is it</a>
+      <a href="#how">How it works</a>
+      <a href="#syntax">Syntax</a>
+      <a href="#usecases">Use cases</a>
+      <a href="#demo">Live demo</a>
+      <a href="https://github.com/eldmani/engram" target="_blank">GitHub ↗</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ── Hero ── -->
+<div class="hero">
+  <div class="hero-badge">v0.2.0 · Zero dependencies</div>
+  <h1>Persistent structured <span>memory</span><br>for AI agents</h1>
+  <p class="lead">
+    Engram gives your AI agent a long-term brain — store facts, retrieve the right ones,
+    forget stale ones, and traverse knowledge graphs. Available in Python and Node.js.
+  </p>
+  <div class="badges">
+    <span class="badge">Python <strong>≥3.10</strong></span>
+    <span class="badge">Node.js <strong>≥23.0.0</strong></span>
+    <span class="badge">SQLite <strong>FTS5 + WAL</strong></span>
+    <span class="badge">Zero <strong>npm deps</strong></span>
+    <span class="badge"><strong>231</strong> py tests · <strong>200</strong> js tests</span>
+  </div>
+</div>
+
+<!-- ── What is Engram ── -->
+<section id="what">
+  <div class="container">
+    <div class="section-label">What is Engram</div>
+    <h2>A memory layer, not a vector store</h2>
+    <p>
+      Most AI pipelines give each conversation a blank slate. Engram adds a <strong>structured, queryable, time-aware memory</strong>
+      that persists across sessions. It stores facts as subject–predicate–object triples, not raw text blobs,
+      so retrieval is precise and relationships are first-class.
+    </p>
+    <div class="grid-3">
+      <div class="card">
+        <div class="card-icon">🧠</div>
+        <h3>Structured facts</h3>
+        <p>Memories are stored as <em>Alice → prefers → dark mode</em> triples, not text. Query by entity, predicate, or full-text.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🕸️</div>
+        <h3>Knowledge graph</h3>
+        <p>Entities are linked. A 2-hop BFS traversal surfaces related facts that a keyword search would miss.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">⏱️</div>
+        <h3>Time-aware</h3>
+        <p>Every fact has <em>valid_from / valid_to</em>. Updating a fact supersedes the old one — full history is preserved.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔒</div>
+        <h3>Scoped memory</h3>
+        <p>Separate memory namespaces per user, session, or agent. Zero cross-contamination by default.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">⚖️</div>
+        <h3>Confidence & decay</h3>
+        <p>Low-confidence facts are quarantined. Unused facts decay in strength; frequently accessed ones are promoted.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">📌</div>
+        <h3>Memory blocks</h3>
+        <p>Always-surfaced key/value slots for agent-editable state: persona, current goal, user profile — pinned to every context call.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── How it works ── -->
+<section id="how">
+  <div class="container">
+    <div class="section-label">How it works</div>
+    <h2>From raw text to ranked context</h2>
+    <p>Every <code style="color:var(--accent3)">store()</code> call runs an ingestion pipeline; every <code style="color:var(--accent3)">retrieve()</code> runs a hybrid scoring pipeline.</p>
+
+    <div class="arch-diagram">
+      <!-- Ingestion -->
+      <div style="width:100%;text-align:center;margin-bottom:8px;font-size:0.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Ingestion pipeline</div>
+      <div class="arch-row">
+        <div class="arch-box blue"><span class="label">input</span><span class="name">Text / JSON</span></div>
+        <span style="color:var(--muted)">→</span>
+        <div class="arch-box blue"><span class="label">step 1-3</span><span class="name">Extractor</span></div>
+        <span style="color:var(--muted)">→</span>
+        <div class="arch-box blue"><span class="label">step 4-6</span><span class="name">Entity Resolution</span></div>
+        <span style="color:var(--muted)">→</span>
+        <div class="arch-box blue"><span class="label">step 7-8</span><span class="name">Confidence Gate</span></div>
+        <span style="color:var(--muted)">→</span>
+        <div class="arch-box blue"><span class="label">step 9</span><span class="name">SQLite Store</span></div>
+      </div>
+
+      <div class="arch-arrow">↕</div>
+
+      <!-- Storage -->
+      <div style="width:100%;text-align:center;margin-bottom:8px;font-size:0.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Storage (SQLite · FTS5 · WAL)</div>
+      <div class="arch-row">
+        <div class="arch-box green"><span class="label">table</span><span class="name">memory_blocks</span></div>
+        <div class="arch-box green"><span class="label">table</span><span class="name">entities + aliases</span></div>
+        <div class="arch-box green"><span class="label">table</span><span class="name">facts</span></div>
+        <div class="arch-box green"><span class="label">table</span><span class="name">episodes</span></div>
+        <div class="arch-box green"><span class="label">table</span><span class="name">quarantined_facts</span></div>
+        <div class="arch-box green"><span class="label">table</span><span class="name">retrieval_traces</span></div>
+      </div>
+
+      <div class="arch-arrow">↕</div>
+
+      <!-- Retrieval -->
+      <div style="width:100%;text-align:center;margin-bottom:8px;font-size:0.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Retrieval pipeline</div>
+      <div class="arch-row">
+        <div class="arch-box purple"><span class="label">signal</span><span class="name">FTS keyword</span></div>
+        <div class="arch-box purple"><span class="label">signal</span><span class="name">Graph BFS</span></div>
+        <div class="arch-box purple"><span class="label">signal</span><span class="name">Temporal</span></div>
+        <div class="arch-box purple"><span class="label">signal</span><span class="name">Salience</span></div>
+        <div class="arch-box purple"><span class="label">signal</span><span class="name">Strength</span></div>
+        <span style="color:var(--muted)">→</span>
+        <div class="arch-box orange"><span class="label">output</span><span class="name">Ranked context</span></div>
+      </div>
+    </div>
+
+    <!-- Scoring weights -->
+    <h3 style="margin-top:40px;margin-bottom:4px">Hybrid scoring weights (defaults)</h3>
+    <p style="font-size:0.88rem">Each retrieved fact gets a composite score:</p>
+    <div class="score-grid">
+      <div>
+        <div class="score-row">
+          <div class="score-label"><span>Semantic (embedding)</span><span>0.40</span></div>
+          <div class="bar-track"><div class="bar-fill" style="width:40%;background:var(--accent)"></div></div>
+        </div>
+        <div class="score-row" style="margin-top:10px">
+          <div class="score-label"><span>Keyword (FTS5)</span><span>0.30</span></div>
+          <div class="bar-track"><div class="bar-fill" style="width:30%;background:var(--accent3)"></div></div>
+        </div>
+        <div class="score-row" style="margin-top:10px">
+          <div class="score-label"><span>Graph (BFS hop distance)</span><span>0.10</span></div>
+          <div class="bar-track"><div class="bar-fill" style="width:10%;background:var(--accent2)"></div></div>
+        </div>
+      </div>
+      <div>
+        <div class="score-row">
+          <div class="score-label"><span>Temporal (recency)</span><span>0.10</span></div>
+          <div class="bar-track"><div class="bar-fill" style="width:10%;background:var(--accent4)"></div></div>
+        </div>
+        <div class="score-row" style="margin-top:10px">
+          <div class="score-label"><span>Salience</span><span>0.05</span></div>
+          <div class="bar-track"><div class="bar-fill" style="width:5%;background:var(--accent5)"></div></div>
+        </div>
+        <div class="score-row" style="margin-top:10px">
+          <div class="score-label"><span>Strength (reinforcement)</span><span>0.05</span></div>
+          <div class="bar-track"><div class="bar-fill" style="width:5%;background:#8b949e"></div></div>
+        </div>
+      </div>
+    </div>
+    <p style="margin-top:12px;font-size:0.83rem">Graph score: <code style="color:var(--accent3)">g = 1 / (1 + hop × 0.5)</code> — seed facts score 1.0, 1-hop 0.667, 2-hop 0.5.</p>
+
+    <!-- Memory lifecycle -->
+    <h3 style="margin-top:44px">Memory lifecycle</h3>
+    <div class="timeline">
+      <div class="tl-item">
+        <h3>store() — ingestion</h3>
+        <p>Text is passed through your extractor. Entities are created or resolved. Facts are inserted with <code>truth_state = 'current'</code>. Low-confidence facts go to quarantine.</p>
+      </div>
+      <div class="tl-item">
+        <h3>retrieve() / getContext() — retrieval</h3>
+        <p>FTS + graph BFS + temporal scoring returns the top-K most relevant facts, related entities, and source episodes. Retrieval traces are written and accessed facts are reinforced.</p>
+      </div>
+      <div class="tl-item">
+        <h3>updateFact() — supersession</h3>
+        <p>The old fact gets <code>valid_to = now</code> and <code>truth_state = 'superseded'</code>. A new fact is inserted. History is preserved — you can query <code>asOf</code> any date.</p>
+      </div>
+      <div class="tl-item">
+        <h3>workers.runDecay() — strength decay</h3>
+        <p>Infrequently accessed facts lose strength over time (power-law decay). High-heat facts (access × strength / log(age)) are flagged for promotion.</p>
+      </div>
+      <div class="tl-item">
+        <h3>forget() — soft or hard delete</h3>
+        <p>Soft forget hides a fact (still queryable via <code>asOf</code>). Hard forget removes it from the database permanently.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Syntax Reference ── -->
+<section id="syntax">
+  <div class="container">
+    <div class="section-label">Syntax reference</div>
+    <h2>API at a glance</h2>
+    <p>Both Python and Node.js expose an identical high-level API. Scroll the tabs to explore every method.</p>
+
+    <div class="tabs">
+      <div class="tab-list" role="tablist">
+        <button class="tab-btn active" onclick="switchTab(this,'t-init')">Initialization</button>
+        <button class="tab-btn" onclick="switchTab(this,'t-store')">store()</button>
+        <button class="tab-btn" onclick="switchTab(this,'t-retrieve')">retrieve()</button>
+        <button class="tab-btn" onclick="switchTab(this,'t-context')">getContext()</button>
+        <button class="tab-btn" onclick="switchTab(this,'t-update')">updateFact()</button>
+        <button class="tab-btn" onclick="switchTab(this,'t-forget')">forget()</button>
+        <button class="tab-btn" onclick="switchTab(this,'t-blocks')">Memory Blocks</button>
+        <button class="tab-btn" onclick="switchTab(this,'t-workers')">Workers</button>
+        <button class="tab-btn" onclick="switchTab(this,'t-extractor')">Custom Extractor</button>
+        <button class="tab-btn" onclick="switchTab(this,'t-scopes')">Scopes</button>
+      </div>
+
+      <!-- Initialization -->
+      <div class="tab-panel active" id="t-init">
+        <pre><span class="c-cmt">// ── Node.js ──────────────────────────────────────────</span>
+<span class="c-kw">import</span> { <span class="c-cls">Engram</span> } <span class="c-kw">from</span> <span class="c-str">'engram-node'</span>;
+
+<span class="c-cmt">// Minimal — uses in-memory SQLite</span>
+<span class="c-kw">const</span> mem <span class="c-op">=</span> <span class="c-kw">new</span> <span class="c-cls">Engram</span>({ dbPath: <span class="c-str">':memory:'</span> });
+
+<span class="c-cmt">// Full config with a persistent file</span>
+<span class="c-kw">const</span> mem <span class="c-op">=</span> <span class="c-kw">new</span> <span class="c-cls">Engram</span>({
+  dbPath:                  <span class="c-str">'agent.db'</span>,
+  defaultScope:            <span class="c-str">'user-42'</span>,
+
+  <span class="c-cmt">// Confidence thresholds</span>
+  extractorConfidenceMin:  <span class="c-num">0.7</span>,
+  supersessionConfidenceMin: <span class="c-num">0.85</span>,
+
+  <span class="c-cmt">// Hybrid scoring weights (must sum to 1.0)</span>
+  weightSemantic:          <span class="c-num">0.40</span>,
+  weightKeyword:           <span class="c-num">0.30</span>,
+  weightGraph:             <span class="c-num">0.10</span>,
+  weightTemporal:          <span class="c-num">0.10</span>,
+  weightSalience:          <span class="c-num">0.05</span>,
+  weightStrength:          <span class="c-num">0.05</span>,
+
+  graphMaxHops:            <span class="c-num">2</span>,
+  defaultTopK:             <span class="c-num">10</span>,
+});
+
+<span class="c-cmt">// Resource cleanup (Node.js ≥23 'using' keyword)</span>
+{
+  <span class="c-kw">using</span> mem <span class="c-op">=</span> <span class="c-kw">new</span> <span class="c-cls">Engram</span>({ dbPath: <span class="c-str">':memory:'</span> });
+  <span class="c-cmt">// mem.close() called automatically at end of block</span>
+}
+
+<span class="c-cmt">// ── Python ───────────────────────────────────────────</span>
+<span class="c-kw">from</span> engram <span class="c-kw">import</span> <span class="c-cls">Engram</span>
+
+mem <span class="c-op">=</span> <span class="c-cls">Engram</span>(db_path<span class="c-op">=</span><span class="c-str">":memory:"</span>)
+
+mem <span class="c-op">=</span> <span class="c-cls">Engram</span>(
+    db_path<span class="c-op">=</span><span class="c-str">"agent.db"</span>,
+    default_scope<span class="c-op">=</span><span class="c-str">"user-42"</span>,
+    extractor_confidence_min<span class="c-op">=</span><span class="c-num">0.7</span>,
+    weight_semantic<span class="c-op">=</span><span class="c-num">0.40</span>,
+    graph_max_hops<span class="c-op">=</span><span class="c-num">2</span>,
+)</pre>
+      </div>
+
+      <!-- store() -->
+      <div class="tab-panel" id="t-store">
+        <pre><span class="c-cmt">// store() — persist facts from text or structured data</span>
+<span class="c-cmt">// Requires a custom extractor to extract entities/facts from text.</span>
+<span class="c-cmt">// With NullExtractor (default), episodes are stored but no facts are extracted.</span>
+
+<span class="c-kw">const</span> result <span class="c-op">=</span> mem.<span class="c-fn">store</span>(<span class="c-str">'Alice prefers dark mode and works at Acme Corp.'</span>);
+
+<span class="c-cmt">// result: StoreResult</span>
+<span class="c-cmt">// {</span>
+<span class="c-cmt">//   episodeId:       string       — UUID of the stored episode</span>
+<span class="c-cmt">//   entityIds:       string[]     — UUIDs of entities created/updated</span>
+<span class="c-cmt">//   factIds:         string[]     — UUIDs of facts inserted</span>
+<span class="c-cmt">//   quarantinedCount: number      — facts below confidence threshold</span>
+<span class="c-cmt">// }</span>
+
+<span class="c-cmt">// Structured input (JSON object)</span>
+mem.<span class="c-fn">store</span>({ subject: <span class="c-str">'Alice'</span>, predicate: <span class="c-str">'role'</span>, object: <span class="c-str">'Engineer'</span> });
+
+<span class="c-cmt">// With metadata and explicit scope</span>
+mem.<span class="c-fn">store</span>(<span class="c-str">'Bob joined the team today.'</span>, {
+  source: <span class="c-str">'slack'</span>,
+  timestamp: <span class="c-kw">new</span> <span class="c-cls">Date</span>().<span class="c-fn">toISOString</span>(),
+}, <span class="c-str">'workspace-7'</span>);
+
+<span class="c-cmt"># Python</span>
+result <span class="c-op">=</span> mem.<span class="c-fn">store</span>(<span class="c-str">"Alice prefers dark mode."</span>)
+result <span class="c-op">=</span> mem.<span class="c-fn">store</span>({ <span class="c-str">"subject"</span>: <span class="c-str">"Alice"</span>, <span class="c-str">"predicate"</span>: <span class="c-str">"role"</span>, <span class="c-str">"object"</span>: <span class="c-str">"Engineer"</span> })</pre>
+      </div>
+
+      <!-- retrieve() -->
+      <div class="tab-panel" id="t-retrieve">
+        <pre><span class="c-cmt">// retrieve() — ranked facts, entities, and source episodes</span>
+
+<span class="c-kw">const</span> result <span class="c-op">=</span> mem.<span class="c-fn">retrieve</span>(<span class="c-str">'Alice preferences'</span>);
+
+<span class="c-cmt">// result: RetrievalResult</span>
+<span class="c-cmt">// {</span>
+<span class="c-cmt">//   facts:    Fact[]        — top-K ranked facts</span>
+<span class="c-cmt">//   entities: Entity[]      — entities mentioned in the top facts</span>
+<span class="c-cmt">//   episodes: Episode[]     — source episodes for the top facts</span>
+<span class="c-cmt">//   scores:   Record&lt;id, number&gt;  — final hybrid score per fact</span>
+<span class="c-cmt">//   traceIds: string[]      — IDs of the retrieval trace records written</span>
+<span class="c-cmt">// }</span>
+
+<span class="c-cmt">// With all options</span>
+<span class="c-kw">const</span> result <span class="c-op">=</span> mem.<span class="c-fn">retrieve</span>(
+  <span class="c-str">'Alice preferences'</span>,
+  <span class="c-num">5</span>,                                   <span class="c-cmt">// topK</span>
+  <span class="c-str">'workspace-7'</span>,                       <span class="c-cmt">// scope</span>
+  <span class="c-kw">new</span> <span class="c-cls">Date</span>(<span class="c-str">'2025-01-01'</span>),             <span class="c-cmt">// asOf — point-in-time query</span>
+);
+
+<span class="c-cmt">// Inspect scores</span>
+<span class="c-kw">for</span> (<span class="c-kw">const</span> fact <span class="c-kw">of</span> result.facts) {
+  console.<span class="c-fn">log</span>(fact.predicate, <span class="c-str">'→'</span>, result.scores[fact.id].<span class="c-fn">toFixed</span>(<span class="c-num">3</span>));
+}
+
+<span class="c-cmt"># Python</span>
+result <span class="c-op">=</span> mem.<span class="c-fn">retrieve</span>(<span class="c-str">"Alice preferences"</span>, top_k<span class="c-op">=</span><span class="c-num">5</span>)
+<span class="c-kw">for</span> fact <span class="c-kw">in</span> result.facts:
+    print(fact.predicate, fact.object_value_json)</pre>
+      </div>
+
+      <!-- getContext() -->
+      <div class="tab-panel" id="t-context">
+        <pre><span class="c-cmt">// getContext() — LLM-ready formatted context string + structured data</span>
+<span class="c-cmt">// Includes memory blocks (always-pinned) + ranked facts + entities</span>
+
+<span class="c-kw">const</span> ctx <span class="c-op">=</span> mem.<span class="c-fn">getContext</span>(<span class="c-str">'What does Alice prefer?'</span>);
+
+<span class="c-cmt">// ctx: ContextResult</span>
+<span class="c-cmt">// {</span>
+<span class="c-cmt">//   formatted: string    — ready to inject into an LLM prompt</span>
+<span class="c-cmt">//   facts:     FactView[]</span>
+<span class="c-cmt">//   entities:  EntityView[]</span>
+<span class="c-cmt">//   blocks:    Record&lt;string, string&gt;   — always-pinned memory blocks</span>
+<span class="c-cmt">//   timeline:  TimelineEvent[]          — ordered history</span>
+<span class="c-cmt">// }</span>
+
+<span class="c-cmt">// Inject directly into a system prompt</span>
+<span class="c-kw">const</span> systemPrompt <span class="c-op">=</span> <span class="c-str">`
+You are a helpful assistant.
+
+## Long-term memory
+${ctx.formatted}
+
+Answer based on the above context.
+`</span>;
+
+<span class="c-cmt"># Python</span>
+ctx <span class="c-op">=</span> mem.<span class="c-fn">get_context</span>(<span class="c-str">"What does Alice prefer?"</span>)
+system_prompt <span class="c-op">=</span> <span class="c-str">f"...\n\n## Memory\n{ctx.formatted}"</span></pre>
+      </div>
+
+      <!-- updateFact() -->
+      <div class="tab-panel" id="t-update">
+        <pre><span class="c-cmt">// updateFact() — supersede a fact with a new value</span>
+<span class="c-cmt">// The old fact gets truth_state='superseded', valid_to=now.</span>
+<span class="c-cmt">// The new fact gets truth_state='current', valid_from=now.</span>
+
+<span class="c-kw">const</span> { facts } <span class="c-op">=</span> mem.<span class="c-fn">retrieve</span>(<span class="c-str">'Alice theme'</span>);
+<span class="c-kw">const</span> oldFact <span class="c-op">=</span> facts.<span class="c-fn">find</span>(f <span class="c-op">=></span> f.predicate <span class="c-op">===</span> <span class="c-str">'prefers'</span>);
+
+<span class="c-kw">const</span> newFact <span class="c-op">=</span> mem.<span class="c-fn">updateFact</span>(oldFact.id, <span class="c-str">'light mode'</span>);
+
+<span class="c-cmt">// Point-in-time query — see what we knew BEFORE the update</span>
+<span class="c-kw">const</span> historical <span class="c-op">=</span> mem.<span class="c-fn">retrieve</span>(<span class="c-str">'Alice theme'</span>, <span class="c-num">5</span>, <span class="c-kw">undefined</span>, yesterday);
+<span class="c-cmt">// historical.facts[0].objectValueJson.value === 'dark mode'</span>
+
+<span class="c-cmt"># Python</span>
+new_fact <span class="c-op">=</span> mem.<span class="c-fn">update_fact</span>(old_fact.id, <span class="c-str">"light mode"</span>)</pre>
+      </div>
+
+      <!-- forget() -->
+      <div class="tab-panel" id="t-forget">
+        <pre><span class="c-cmt">// forget() — soft hide or hard delete</span>
+<span class="c-cmt">// Soft (default): truth_state='hidden', still queryable via asOf</span>
+<span class="c-cmt">// Hard: permanently removed from the database</span>
+
+<span class="c-cmt">// Forget a single fact (soft)</span>
+mem.<span class="c-fn">forget</span>({ factId: <span class="c-str">'uuid-of-fact'</span> });
+
+<span class="c-cmt">// Forget a single fact (hard delete)</span>
+mem.<span class="c-fn">forget</span>({ factId: <span class="c-str">'uuid-of-fact'</span> }, <span class="c-kw">true</span>);
+
+<span class="c-cmt">// Forget ALL facts about an entity</span>
+mem.<span class="c-fn">forget</span>({ entityId: <span class="c-str">'uuid-of-entity'</span> });
+
+<span class="c-cmt">// Forget everything from a specific episode (e.g. bad data import)</span>
+mem.<span class="c-fn">forget</span>({ episodeId: <span class="c-str">'uuid-of-episode'</span> });
+
+<span class="c-cmt">// Wipe an entire scope</span>
+mem.<span class="c-fn">forget</span>({ scopeId: <span class="c-str">'temp-session-99'</span> }, <span class="c-kw">true</span>);
+
+<span class="c-cmt">// forget() returns ForgetResult:</span>
+<span class="c-cmt">// { affectedFacts: number, affectedEntities: number }</span>
+
+<span class="c-cmt"># Python</span>
+mem.<span class="c-fn">forget</span>(fact_id<span class="c-op">=</span><span class="c-str">"uuid"</span>)
+mem.<span class="c-fn">forget</span>(entity_id<span class="c-op">=</span><span class="c-str">"uuid"</span>, hard<span class="c-op">=</span><span class="c-kw">True</span>)</pre>
+      </div>
+
+      <!-- Memory Blocks -->
+      <div class="tab-panel" id="t-blocks">
+        <pre><span class="c-cmt">// Memory blocks — always-surfaced pinned key/value state</span>
+<span class="c-cmt">// Unlike retrieved facts, blocks appear in EVERY getContext() call.</span>
+<span class="c-cmt">// Use for: persona, current goal, user profile, agent config.</span>
+
+mem.<span class="c-fn">setBlock</span>(<span class="c-str">'persona'</span>, <span class="c-str">'You are a concise technical assistant.'</span>);
+mem.<span class="c-fn">setBlock</span>(<span class="c-str">'user_name'</span>, <span class="c-str">'Alice'</span>);
+mem.<span class="c-fn">setBlock</span>(<span class="c-str">'current_goal'</span>, <span class="c-str">'Finish the Q2 roadmap.'</span>);
+
+<span class="c-kw">const</span> goal <span class="c-op">=</span> mem.<span class="c-fn">getBlock</span>(<span class="c-str">'current_goal'</span>);
+<span class="c-cmt">// 'Finish the Q2 roadmap.'</span>
+
+<span class="c-kw">const</span> all <span class="c-op">=</span> mem.<span class="c-fn">getBlocks</span>();
+<span class="c-cmt">// { persona: '...', user_name: 'Alice', current_goal: '...' }</span>
+
+mem.<span class="c-fn">deleteBlock</span>(<span class="c-str">'current_goal'</span>);
+
+<span class="c-cmt">// Blocks are scoped too</span>
+mem.<span class="c-fn">setBlock</span>(<span class="c-str">'plan'</span>, <span class="c-str">'Deploy to staging'</span>, <span class="c-str">'session-abc'</span>);
+
+<span class="c-cmt"># Python</span>
+mem.<span class="c-fn">set_block</span>(<span class="c-str">"persona"</span>, <span class="c-str">"You are a helpful assistant."</span>)
+mem.<span class="c-fn">get_block</span>(<span class="c-str">"persona"</span>)
+mem.<span class="c-fn">get_blocks</span>()</pre>
+      </div>
+
+      <!-- Workers -->
+      <div class="tab-panel" id="t-workers">
+        <pre><span class="c-cmt">// Background workers — call periodically (cron, timer, etc.)</span>
+
+<span class="c-kw">const</span> workers <span class="c-op">=</span> mem.workers;
+
+<span class="c-cmt">// 1. Decay — reduce strength of infrequently accessed facts</span>
+workers.<span class="c-fn">runDecay</span>(<span class="c-str">'default'</span>);
+
+<span class="c-cmt">// 2. Heat promotion — find hot facts (access × strength / log(age))</span>
+<span class="c-kw">const</span> hotIds <span class="c-op">=</span> workers.<span class="c-fn">runHeatPromotion</span>(<span class="c-str">'default'</span>);
+<span class="c-cmt">// returns string[] of fact IDs above heatPromotionThreshold</span>
+
+<span class="c-cmt">// 3. Reconsolidation — re-evaluate quarantined facts</span>
+<span class="c-cmt">// If a fact was quarantined (low confidence) but the same</span>
+<span class="c-cmt">// subject+predicate was later confirmed, reject the quarantine.</span>
+workers.<span class="c-fn">runReconsolidation</span>(<span class="c-str">'default'</span>);
+
+<span class="c-cmt">// 4. Reinforce accessed facts</span>
+workers.<span class="c-fn">reinforce</span>([<span class="c-str">'fact-uuid-1'</span>, <span class="c-str">'fact-uuid-2'</span>]);
+
+<span class="c-cmt">// 5. Full cleanup cycle</span>
+workers.<span class="c-fn">runCleanup</span>(<span class="c-str">'default'</span>);
+
+<span class="c-cmt">// Cron example (runs every 24 hours)</span>
+<span class="c-fn">setInterval</span>(() <span class="c-op">=></span> {
+  workers.<span class="c-fn">runDecay</span>(<span class="c-str">'default'</span>);
+  workers.<span class="c-fn">runReconsolidation</span>(<span class="c-str">'default'</span>);
+}, <span class="c-num">24</span> <span class="c-op">*</span> <span class="c-num">60</span> <span class="c-op">*</span> <span class="c-num">60</span> <span class="c-op">*</span> <span class="c-num">1000</span>);
+
+<span class="c-cmt"># Python</span>
+mem.workers.<span class="c-fn">run_decay</span>(<span class="c-str">"default"</span>)
+mem.workers.<span class="c-fn">run_reconsolidation</span>(<span class="c-str">"default"</span>)</pre>
+      </div>
+
+      <!-- Custom Extractor -->
+      <div class="tab-panel" id="t-extractor">
+        <pre><span class="c-cmt">// Custom Extractor — bridge between text and structured facts</span>
+<span class="c-cmt">// Engram ships with NullExtractor (no-op). Wire in your LLM or NLP pipeline.</span>
+
+<span class="c-kw">import</span> { <span class="c-cls">BaseExtractor</span> } <span class="c-kw">from</span> <span class="c-str">'engram-node'</span>;
+
+<span class="c-kw">class</span> <span class="c-cls">LLMExtractor</span> <span class="c-kw">extends</span> <span class="c-cls">BaseExtractor</span> {
+  <span class="c-fn">extract</span>(data) {
+    <span class="c-cmt">// Call your LLM or NLP model here</span>
+    <span class="c-kw">return</span> {
+      entities: [
+        { name: <span class="c-str">'Alice'</span>,    type: <span class="c-str">'person'</span>, confidence: <span class="c-num">0.98</span> },
+        { name: <span class="c-str">'Acme Corp'</span>, type: <span class="c-str">'org'</span>,    confidence: <span class="c-num">0.95</span> },
+      ],
+      facts: [
+        {
+          subject:    <span class="c-str">'Alice'</span>,
+          predicate:  <span class="c-str">'works_at'</span>,
+          object:     <span class="c-str">'Acme Corp'</span>,
+          confidence: <span class="c-num">0.95</span>,
+          factType:   <span class="c-str">'assertion'</span>,
+        },
+      ],
+      confidence: <span class="c-num">0.95</span>,
+    };
+  }
+}
+
+mem.<span class="c-fn">setExtractor</span>(<span class="c-kw">new</span> <span class="c-cls">LLMExtractor</span>());
+mem.<span class="c-fn">store</span>(<span class="c-str">'Alice works at Acme Corp.'</span>);
+
+<span class="c-cmt"># Python — same pattern</span>
+<span class="c-kw">from</span> engram <span class="c-kw">import</span> <span class="c-cls">BaseExtractor</span>
+
+<span class="c-kw">class</span> <span class="c-cls">MyExtractor</span>(<span class="c-cls">BaseExtractor</span>):
+    <span class="c-kw">def</span> <span class="c-fn">extract</span>(self, data):
+        <span class="c-kw">return</span> {<span class="c-str">"entities"</span>: [...], <span class="c-str">"facts"</span>: [...], <span class="c-str">"confidence"</span>: <span class="c-num">0.9</span>}
+
+mem.<span class="c-fn">set_extractor</span>(<span class="c-cls">MyExtractor</span>())</pre>
+      </div>
+
+      <!-- Scopes -->
+      <div class="tab-panel" id="t-scopes">
+        <pre><span class="c-cmt">// Scopes — namespace isolation for multi-user / multi-agent systems</span>
+<span class="c-cmt">// Every API method accepts an optional scope parameter.</span>
+<span class="c-cmt">// Different scopes share the same SQLite file but never cross-contaminate.</span>
+
+<span class="c-kw">const</span> memAlice <span class="c-op">=</span> <span class="c-kw">new</span> <span class="c-cls">Engram</span>({ dbPath: <span class="c-str">'shared.db'</span>, defaultScope: <span class="c-str">'alice'</span> });
+<span class="c-kw">const</span> memBob   <span class="c-op">=</span> <span class="c-kw">new</span> <span class="c-cls">Engram</span>({ dbPath: <span class="c-str">'shared.db'</span>, defaultScope: <span class="c-str">'bob'</span>   });
+
+memAlice.<span class="c-fn">store</span>(<span class="c-str">'Alice likes coffee.'</span>);
+memBob.<span class="c-fn">store</span>(<span class="c-str">'Bob prefers tea.'</span>);
+
+<span class="c-cmt">// Cross-scope queries return nothing</span>
+<span class="c-kw">const</span> r <span class="c-op">=</span> memBob.<span class="c-fn">retrieve</span>(<span class="c-str">'coffee'</span>);
+<span class="c-cmt">// r.facts.length === 0  ✓ Alice's data is invisible to Bob's scope</span>
+
+<span class="c-cmt">// Or pass scope explicitly per call</span>
+mem.<span class="c-fn">store</span>(<span class="c-str">'Alice likes coffee.'</span>, {}, <span class="c-str">'alice'</span>);
+mem.<span class="c-fn">retrieve</span>(<span class="c-str">'coffee'</span>, <span class="c-num">5</span>, <span class="c-str">'alice'</span>);
+mem.<span class="c-fn">setBlock</span>(<span class="c-str">'goal'</span>, <span class="c-str">'Ship v1'</span>, <span class="c-str">'alice'</span>);
+
+<span class="c-cmt"># Python</span>
+mem_alice <span class="c-op">=</span> <span class="c-cls">Engram</span>(db_path<span class="c-op">=</span><span class="c-str">"shared.db"</span>, default_scope<span class="c-op">=</span><span class="c-str">"alice"</span>)
+mem_bob   <span class="c-op">=</span> <span class="c-cls">Engram</span>(db_path<span class="c-op">=</span><span class="c-str">"shared.db"</span>, default_scope<span class="c-op">=</span><span class="c-str">"bob"</span>)</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Real-world use cases ── -->
+<section id="usecases">
+  <div class="container">
+    <div class="section-label">Real-world use cases</div>
+    <h2>Where you'd actually use Engram</h2>
+    <div class="usecase-grid">
+
+      <div class="usecase-card">
+        <div class="usecase-header">
+          <div class="usecase-icon" style="background:rgba(88,166,255,0.12);color:var(--accent)">💬</div>
+          <div>
+            <h3>Persistent chatbot memory</h3>
+            <p>Remember user preferences across sessions</p>
+          </div>
+        </div>
+        <div class="usecase-body">
+          <pre><span class="c-cmt">// User says: "I prefer short answers"</span>
+mem.<span class="c-fn">store</span>(<span class="c-str">'User prefers concise replies.'</span>);
+
+<span class="c-cmt">// Next session — inject memory into prompt</span>
+<span class="c-kw">const</span> ctx <span class="c-op">=</span> mem.<span class="c-fn">getContext</span>(<span class="c-str">'user style preferences'</span>);
+<span class="c-cmt">// ctx.formatted → "User prefers concise replies."</span>
+systemPrompt <span class="c-op">+=</span> ctx.formatted;</pre>
+        </div>
+      </div>
+
+      <div class="usecase-card">
+        <div class="usecase-header">
+          <div class="usecase-icon" style="background:rgba(63,185,80,0.12);color:var(--accent2)">🤖</div>
+          <div>
+            <h3>Autonomous agents</h3>
+            <p>Agents that learn and update their world model</p>
+          </div>
+        </div>
+        <div class="usecase-body">
+          <pre><span class="c-cmt">// Agent observes the world</span>
+agent.<span class="c-fn">store</span>(<span class="c-str">'Server CPU is at 94%.'</span>);
+agent.<span class="c-fn">store</span>(<span class="c-str">'Deployment pipeline is blocked.'</span>);
+
+<span class="c-cmt">// Agent recalls relevant context before acting</span>
+<span class="c-kw">const</span> ctx <span class="c-op">=</span> agent.<span class="c-fn">getContext</span>(<span class="c-str">'infrastructure status'</span>);
+<span class="c-cmt">// Graph traversal surfaces both CPU + pipeline facts</span></pre>
+        </div>
+      </div>
+
+      <div class="usecase-card">
+        <div class="usecase-header">
+          <div class="usecase-icon" style="background:rgba(210,168,255,0.12);color:var(--accent3)">🏥</div>
+          <div>
+            <h3>Medical / legal record agents</h3>
+            <p>Track entities and supersede outdated facts</p>
+          </div>
+        </div>
+        <div class="usecase-body">
+          <pre><span class="c-cmt">// Patient record update</span>
+<span class="c-kw">const</span> r <span class="c-op">=</span> mem.<span class="c-fn">retrieve</span>(<span class="c-str">'blood pressure medication'</span>);
+<span class="c-kw">const</span> old <span class="c-op">=</span> r.facts.<span class="c-fn">find</span>(f <span class="c-op">=></span> f.predicate <span class="c-op">===</span> <span class="c-str">'medication'</span>);
+
+<span class="c-cmt">// Doctor updates prescription</span>
+mem.<span class="c-fn">updateFact</span>(old.id, <span class="c-str">'lisinopril 10mg'</span>);
+
+<span class="c-cmt">// Historical query still returns old fact</span>
+mem.<span class="c-fn">retrieve</span>(<span class="c-str">'medication'</span>, <span class="c-num">5</span>, <span class="c-kw">undefined</span>, asOf);</pre>
+        </div>
+      </div>
+
+      <div class="usecase-card">
+        <div class="usecase-header">
+          <div class="usecase-icon" style="background:rgba(255,166,87,0.12);color:var(--accent4)">📊</div>
+          <div>
+            <h3>CRM / sales intelligence</h3>
+            <p>Entity graph links contacts, companies, deals</p>
+          </div>
+        </div>
+        <div class="usecase-body">
+          <pre><span class="c-cmt">// Store relationship facts</span>
+mem.<span class="c-fn">store</span>(<span class="c-str">'Alice works at Acme. Bob manages Alice.'</span>);
+mem.<span class="c-fn">store</span>(<span class="c-str">'Acme has a $500K open deal.'</span>);
+
+<span class="c-cmt">// Querying "Bob" surfaces Acme + deal via graph</span>
+<span class="c-kw">const</span> r <span class="c-op">=</span> mem.<span class="c-fn">retrieve</span>(<span class="c-str">'Bob'</span>, <span class="c-num">10</span>);
+<span class="c-cmt">// 2-hop BFS: Bob → Alice → Acme → deal</span></pre>
+        </div>
+      </div>
+
+      <div class="usecase-card">
+        <div class="usecase-header">
+          <div class="usecase-icon" style="background:rgba(255,123,114,0.12);color:var(--accent5)">🎓</div>
+          <div>
+            <h3>Tutoring / learning systems</h3>
+            <p>Track what the learner knows and forgets</p>
+          </div>
+        </div>
+        <div class="usecase-body">
+          <pre><span class="c-cmt">// Student mastery tracking</span>
+mem.<span class="c-fn">setBlock</span>(<span class="c-str">'weak_topics'</span>, <span class="c-str">'recursion, pointers'</span>);
+
+<span class="c-cmt">// After quiz — update mastered topics</span>
+mem.<span class="c-fn">store</span>(<span class="c-str">'Student mastered recursion.'</span>);
+
+<span class="c-cmt">// Next session — personalised question selection</span>
+<span class="c-kw">const</span> ctx <span class="c-op">=</span> mem.<span class="c-fn">getContext</span>(<span class="c-str">'student knowledge'</span>);
+<span class="c-cmt">// Blocks + facts surface weak areas automatically</span></pre>
+        </div>
+      </div>
+
+      <div class="usecase-card">
+        <div class="usecase-header">
+          <div class="usecase-icon" style="background:rgba(88,166,255,0.12);color:var(--accent)">🔧</div>
+          <div>
+            <h3>DevOps / incident response</h3>
+            <p>Incident timeline with point-in-time queries</p>
+          </div>
+        </div>
+        <div class="usecase-body">
+          <pre><span class="c-cmt">// Alert fires</span>
+mem.<span class="c-fn">store</span>(<span class="c-str">'service-auth: latency_p99 is 4200ms'</span>, {}, <span class="c-str">'incident-42'</span>);
+mem.<span class="c-fn">store</span>(<span class="c-str">'service-auth: depends_on postgres-primary'</span>, {}, <span class="c-str">'incident-42'</span>);
+
+<span class="c-cmt">// Post-mortem — query what we knew at T+5m</span>
+<span class="c-kw">const</span> snapshot <span class="c-op">=</span> mem.<span class="c-fn">retrieve</span>(<span class="c-str">'auth latency'</span>, <span class="c-num">20</span>, <span class="c-str">'incident-42'</span>, t5m);
+<span class="c-cmt">// workers.runDecay() cleans stale incident facts over time</span></pre>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ── Live Demo ── -->
+<section id="demo">
+  <div class="container">
+    <div class="section-label">Interactive demo</div>
+    <h2>Simulate an in-browser memory session</h2>
+    <p>This demo simulates the Engram API in-browser using a lightweight JavaScript replica — no server required.</p>
+    <div class="demo-grid">
+      <div class="demo-panel">
+        <div class="demo-panel-header">
+          <div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div>
+          <strong>engram-demo.js</strong>
+        </div>
+        <div class="demo-controls">
+          <label>Action</label>
+          <select id="demo-action">
+            <option value="store">store(text)</option>
+            <option value="retrieve">retrieve(query)</option>
+            <option value="setBlock">setBlock(key, value)</option>
+            <option value="getContext">getContext(query)</option>
+            <option value="forget">forget(factId)</option>
+            <option value="decay">workers.runDecay()</option>
+            <option value="clear">Clear memory</option>
+          </select>
+
+          <label id="lbl-arg1">Text to store</label>
+          <input id="demo-arg1" type="text" placeholder="Alice prefers dark mode." value="Alice prefers dark mode." />
+
+          <label id="lbl-arg2" style="display:none">Value</label>
+          <input id="demo-arg2" type="text" style="display:none" placeholder="value" />
+
+          <button class="btn" onclick="runDemo()">▶ Run</button>
+          <button class="btn secondary" onclick="clearOutput()">Clear output</button>
+        </div>
+      </div>
+      <div class="demo-panel">
+        <div class="demo-panel-header">
+          <div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div>
+          <strong>output</strong>
+        </div>
+        <div id="demo-output">// Output will appear here...\n</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Comparison ── -->
+<section>
+  <div class="container">
+    <div class="section-label">Comparison</div>
+    <h2>How Engram fits the landscape</h2>
+    <table class="compare-table">
+      <thead>
+        <tr>
+          <th>Feature</th>
+          <th>Engram</th>
+          <th>Vector store (Pinecone/Weaviate)</th>
+          <th>Raw SQLite</th>
+          <th>Redis</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Structured subject-predicate-object triples</td><td class="yes">✓</td><td class="no">✗</td><td class="partial">manual</td><td class="no">✗</td></tr>
+        <tr><td>Time-aware (valid_from / valid_to)</td><td class="yes">✓</td><td class="no">✗</td><td class="partial">manual</td><td class="no">✗</td></tr>
+        <tr><td>Knowledge graph traversal</td><td class="yes">✓ built-in BFS</td><td class="no">✗</td><td class="partial">manual</td><td class="no">✗</td></tr>
+        <tr><td>Hybrid scoring (keyword + graph + temporal)</td><td class="yes">✓</td><td class="partial">semantic only</td><td class="no">✗</td><td class="no">✗</td></tr>
+        <tr><td>Confidence gating & quarantine</td><td class="yes">✓</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td></tr>
+        <tr><td>Fact decay & reinforcement dynamics</td><td class="yes">✓</td><td class="no">✗</td><td class="no">✗</td><td class="partial">TTL only</td></tr>
+        <tr><td>Multi-scope isolation</td><td class="yes">✓</td><td class="partial">namespaces</td><td class="partial">manual</td><td class="partial">keyspace</td></tr>
+        <tr><td>Zero external dependencies</td><td class="yes">✓</td><td class="no">✗ cloud API</td><td class="yes">✓</td><td class="no">✗ server</td></tr>
+        <tr><td>Point-in-time (asOf) queries</td><td class="yes">✓</td><td class="no">✗</td><td class="partial">manual</td><td class="no">✗</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ── Footer ── -->
+<footer>
+  <p>
+    <strong style="color:var(--text)">Engram</strong> &mdash;
+    <a href="https://github.com/eldmani/engram" target="_blank">github.com/eldmani/engram</a>
+    &nbsp;·&nbsp; MIT licence
+    &nbsp;·&nbsp; Python ≥3.10 &nbsp;·&nbsp; Node.js ≥23.0.0
+  </p>
+</footer>
+
+<script>
+// ── Tab switcher ─────────────────────────────────────────────────────────────
+function switchTab(btn, panelId) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(panelId).classList.add('active');
+}
+
+// ── Live demo — in-browser Engram simulator ───────────────────────────────────
+const _db = {
+  facts: [],
+  blocks: {},
+  episodes: [],
+  nextId: 1,
+};
+
+function uid() { return 'id-' + (_db.nextId++).toString(16).padStart(4,'0'); }
+
+function simpleFts(text, query) {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const target = text.toLowerCase();
+  return words.filter(w => target.includes(w)).length / Math.max(words.length, 1);
+}
+
+const demoStore = {
+  store(text) {
+    const epId = uid();
+    _db.episodes.push({ id: epId, text, createdAt: new Date() });
+    // Naïve extraction: split "X verb Y" patterns
+    const patterns = [
+      /(\w[\w\s]+?)\s+(prefers?|likes?|works?\s+at|is|has|uses?|owns?|hates?|manages?)\s+([\w\s]+)/gi,
+    ];
+    const facts = [];
+    let m;
+    for (const pat of patterns) {
+      pat.lastIndex = 0;
+      while ((m = pat.exec(text)) !== null) {
+        const f = {
+          id: uid(),
+          subject: m[1].trim(),
+          predicate: m[2].trim().replace(/\s+/g,'_'),
+          object: m[3].trim().replace(/[.!?]$/,''),
+          truth_state: 'current',
+          confidence: 0.9,
+          strength: 1.0,
+          access_count: 0,
+          created_at: new Date(),
+          episodeId: epId,
+        };
+        _db.facts.push(f);
+        facts.push(f);
+      }
+    }
+    return { episodeId: epId, factIds: facts.map(f => f.id), entityCount: new Set(facts.map(f => f.subject)).size };
+  },
+  retrieve(query, topK = 5) {
+    const scored = _db.facts
+      .filter(f => f.truth_state === 'current')
+      .map(f => {
+        const kw = simpleFts(`${f.subject} ${f.predicate} ${f.object}`, query);
+        const temporal = 1 / (1 + (Date.now() - f.created_at.getTime()) / 86400000);
+        const score = kw * 0.7 + temporal * 0.1 + f.strength * 0.1 + f.confidence * 0.1;
+        f.access_count++;
+        f.strength = Math.min(2, f.strength + 0.05);
+        return { fact: f, score };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, topK);
+    return scored;
+  },
+  setBlock(key, value) { _db.blocks[key] = value; },
+  getBlocks() { return { ..._db.blocks }; },
+  forget(factId) {
+    const f = _db.facts.find(f => f.id === factId);
+    if (f) { f.truth_state = 'hidden'; return true; }
+    return false;
+  },
+  decay() {
+    let decayed = 0;
+    for (const f of _db.facts) {
+      if (f.truth_state === 'current') {
+        const old = f.strength;
+        f.strength = Math.max(0.01, f.strength * 0.85);
+        if (Math.abs(old - f.strength) > 0.001) decayed++;
+      }
+    }
+    return decayed;
+  },
+  clear() { _db.facts.length = 0; _db.blocks = {}; _db.episodes.length = 0; _db.nextId = 1; },
+};
+
+// ── Demo UI ──────────────────────────────────────────────────────────────────
+const actionCfg = {
+  store:      { l1: 'Text to store',      p1: 'Alice prefers dark mode.',    l2: null },
+  retrieve:   { l1: 'Query',              p1: 'Alice preferences',            l2: null },
+  setBlock:   { l1: 'Block key',          p1: 'persona',                      l2: 'Block value', p2: 'You are a concise assistant.' },
+  getContext: { l1: 'Query',              p1: 'user preferences',             l2: null },
+  forget:     { l1: 'Fact ID to forget',  p1: 'id-0001',                      l2: null },
+  decay:      { l1: null,                 p1: null,                           l2: null },
+  clear:      { l1: null,                 p1: null,                           l2: null },
+};
+
+document.getElementById('demo-action').addEventListener('change', function() {
+  const cfg = actionCfg[this.value];
+  const l1 = document.getElementById('lbl-arg1');
+  const a1 = document.getElementById('demo-arg1');
+  const l2 = document.getElementById('lbl-arg2');
+  const a2 = document.getElementById('demo-arg2');
+  if (cfg.l1) { l1.style.display='block'; a1.style.display='block'; l1.textContent=cfg.l1; a1.placeholder=cfg.p1||''; a1.value=''; }
+  else         { l1.style.display='none';  a1.style.display='none'; }
+  if (cfg.l2) { l2.style.display='block'; a2.style.display='block'; l2.textContent=cfg.l2; a2.placeholder=cfg.p2||''; a2.value=''; }
+  else         { l2.style.display='none';  a2.style.display='none'; }
+});
+
+function appendOutput(html) {
+  const el = document.getElementById('demo-output');
+  el.innerHTML += html + '\n';
+  el.scrollTop = el.scrollHeight;
+}
+function clearOutput() {
+  document.getElementById('demo-output').innerHTML = '';
+}
+
+function runDemo() {
+  const action = document.getElementById('demo-action').value;
+  const arg1   = document.getElementById('demo-arg1').value.trim();
+  const arg2   = document.getElementById('demo-arg2').value.trim();
+  const ts     = new Date().toLocaleTimeString();
+
+  appendOutput(`<span class="out-muted">// [${ts}] ${action}(${arg1 ? JSON.stringify(arg1) : ''}${arg2 ? ', ' + JSON.stringify(arg2) : ''})</span>`);
+
+  try {
+    switch (action) {
+      case 'store': {
+        if (!arg1) { appendOutput('<span class="out-warn">⚠ Enter some text first.</span>'); return; }
+        const r = demoStore.store(arg1);
+        appendOutput(`<span class="out-key">episodeId</span>  <span class="out-val">${r.episodeId}</span>`);
+        appendOutput(`<span class="out-key">factIds   </span> <span class="out-val">[${r.factIds.join(', ')}]</span>`);
+        appendOutput(`<span class="out-key">entities  </span> <span class="out-val">${r.entityCount} unique subject(s)</span>`);
+        if (r.factIds.length === 0) appendOutput(`<span class="out-muted">  (no facts extracted — try: "Alice prefers dark mode")</span>`);
+        break;
+      }
+      case 'retrieve': {
+        if (!arg1) { appendOutput('<span class="out-warn">⚠ Enter a query.</span>'); return; }
+        const results = demoStore.retrieve(arg1);
+        if (results.length === 0) { appendOutput('<span class="out-muted">  (no facts in memory — store something first)</span>'); return; }
+        results.forEach(({ fact, score }) => {
+          appendOutput(`<span class="out-fact">  [${fact.id}] ${fact.subject} → ${fact.predicate} → ${fact.object}</span>  <span class="out-muted">score=${score.toFixed(3)} strength=${fact.strength.toFixed(2)}</span>`);
+        });
+        break;
+      }
+      case 'setBlock': {
+        const key = arg1 || 'key'; const val = arg2 || 'value';
+        demoStore.setBlock(key, val);
+        appendOutput(`<span class="out-key">blocks</span> <span class="out-val">${JSON.stringify(demoStore.getBlocks())}</span>`);
+        break;
+      }
+      case 'getContext': {
+        const results = demoStore.retrieve(arg1 || '');
+        const blocks  = demoStore.getBlocks();
+        const hasBlocks = Object.keys(blocks).length > 0;
+        if (hasBlocks) {
+          appendOutput(`<span class="out-key">## Memory Blocks</span>`);
+          for (const [k, v] of Object.entries(blocks)) appendOutput(`<span class="out-val">  ${k}: ${v}</span>`);
+        }
+        if (results.length > 0) {
+          appendOutput(`<span class="out-key">## Facts (ranked)</span>`);
+          results.forEach(({ fact }) => appendOutput(`<span class="out-fact">  - ${fact.subject} ${fact.predicate} ${fact.object}</span>`));
+        }
+        if (!hasBlocks && results.length === 0) appendOutput('<span class="out-muted">  (empty memory — store something first)</span>');
+        break;
+      }
+      case 'forget': {
+        const ok = demoStore.forget(arg1);
+        appendOutput(ok
+          ? `<span class="out-val">✓ Fact ${arg1} hidden (truth_state = 'hidden')</span>`
+          : `<span class="out-warn">⚠ Fact not found. Run retrieve() first to get a fact ID.</span>`);
+        break;
+      }
+      case 'decay': {
+        const n = demoStore.decay();
+        appendOutput(`<span class="out-val">✓ Decay applied to ${n} fact(s). Strength reduced by 15%.</span>`);
+        break;
+      }
+      case 'clear': {
+        demoStore.clear();
+        appendOutput(`<span class="out-val">✓ Memory cleared.</span>`);
+        break;
+      }
+    }
+  } catch (e) {
+    appendOutput(`<span class="out-warn">Error: ${e.message}</span>`);
+  }
+  appendOutput('');
+}
+</script>
+</body>
+</html>
